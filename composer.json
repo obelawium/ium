@@ -1,0 +1,16 @@
+{
+    "name": "obelaw/stack",
+    "description": "Stack Core",
+    "autoload": {
+        "psr-4": {
+            "Obelaw\\Stack\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Karim Mohamed",
+            "email": "komicho1996@gmail.com"
+        }
+    ],
+    "require": {}
+}
