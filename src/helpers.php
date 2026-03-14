@@ -25,8 +25,8 @@ if (!function_exists('ium_config')) {
 }
 
 if (!function_exists('ium_set_config')) {
-    function ium_set_config(IumConfigEnum|string $enum, mixed $value): void
+    function ium_set_config(IumConfigEnum|string $enum, mixed $value, ?bool $global = null): void
     {
-        ium()->config()->set($enum, $value);
+        ium()->config()->set($enum, $value, $global);
     }
 }

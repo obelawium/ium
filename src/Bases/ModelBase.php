@@ -3,6 +3,7 @@
 namespace Obelaw\Ium\Core\Bases;
 
 use Illuminate\Database\Eloquent\Model;
+use Obelaw\Ium\Core\Engine\GlobalConfigManager;
 
 class ModelBase extends Model
 {
@@ -30,6 +31,10 @@ class ModelBase extends Model
         parent::__construct($attributes);
 
         $prefix = $this->module ? $this->prefix . $this->module : $this->prefix;
+
+        if ($connection = GlobalConfigManager::get('obelawium.db.connection')) {
+            $this->setConnection($connection);
+        }
 
         $this->setTable($prefix . $this->getTable());
     }

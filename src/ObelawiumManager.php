@@ -3,8 +3,8 @@
 namespace Obelaw\Ium\Core;
 
 use Illuminate\Support\Traits\Macroable;
-use Obelaw\Ium\Core\Engine\ObelawConfigManager;
 use Obelaw\Ium\Core\Contracts\IumConfigEnum;
+use Obelaw\Ium\Core\Engine\ObelawConfigManager;
 
 final class ObelawiumManager
 {
