@@ -1,9 +1,9 @@
 <?php
 
-namespace Obelaw\Ium\Core\Bases;
+namespace Obelaw\Ium\Bases;
 
 use Illuminate\Database\Eloquent\Model;
-use Obelaw\Ium\Core\Engine\GlobalConfigManager;
+use Obelaw\Ium\Engine\GlobalConfigManager;
 
 class ModelBase extends Model
 {

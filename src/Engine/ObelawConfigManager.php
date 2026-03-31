@@ -1,9 +1,9 @@
 <?php
 
-namespace Obelaw\Ium\Core\Engine;
+namespace Obelaw\Ium\Engine;
 
-use Obelaw\Ium\Core\Contracts\IumConfigEnum;
-use Obelaw\Ium\Core\Engine\GlobalConfigManager;
+use Obelaw\Ium\Contracts\IumConfigEnum;
+use Obelaw\Ium\Engine\GlobalConfigManager;
 
 final class ObelawConfigManager
 {

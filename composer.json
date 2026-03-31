@@ -1,5 +1,5 @@
 {
-    "name": "obelaw/ium-core",
+    "name": "obelaw/ium",
     "description": "IUM Core",
     "authors": [
         {
@@ -12,7 +12,7 @@
             "src/helpers.php"
         ],
         "psr-4": {
-            "Obelaw\\Ium\\Core\\": "src/"
+            "Obelaw\\Ium\\": "src/"
         }
     },
     "require": {
@@ -21,7 +21,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Obelaw\\Ium\\Core\\Providers\\ObelawiumServiceProvider"
+                "Obelaw\\Ium\\Providers\\ObelawiumServiceProvider"
             ]
         }
     }

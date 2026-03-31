@@ -1,6 +1,6 @@
 <?php
 
-namespace Obelaw\Ium\Core\Bases;
+namespace Obelaw\Ium\Bases;
 
 use Illuminate\Database\Migrations\Migration;
 

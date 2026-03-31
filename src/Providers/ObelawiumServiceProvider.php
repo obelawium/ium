@@ -1,10 +1,10 @@
 <?php
 
-namespace Obelaw\Ium\Core\Providers;
+namespace Obelaw\Ium\Providers;
 
 use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\ServiceProvider;
-use Obelaw\Ium\Core\ObelawiumManager;
+use Obelaw\Ium\ObelawiumManager;
 
 class ObelawiumServiceProvider extends ServiceProvider
 {

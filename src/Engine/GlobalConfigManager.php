@@ -1,6 +1,6 @@
 <?php
 
-namespace Obelaw\Ium\Core\Engine;
+namespace Obelaw\Ium\Engine;
 
 class GlobalConfigManager
 {

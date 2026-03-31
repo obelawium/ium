@@ -1,7 +1,7 @@
 <?php
 
-use Obelaw\Ium\Core\ObelawiumManager;
-use Obelaw\Ium\Core\Contracts\IumConfigEnum;
+use Obelaw\Ium\ObelawiumManager;
+use Obelaw\Ium\Contracts\IumConfigEnum;
 use Illuminate\Container\Container;
 
 if (!function_exists('ium')) {

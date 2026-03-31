@@ -1,10 +1,10 @@
 <?php
 
-namespace Obelaw\Ium\Core;
+namespace Obelaw\Ium;
 
 use Illuminate\Support\Traits\Macroable;
-use Obelaw\Ium\Core\Contracts\IumConfigEnum;
-use Obelaw\Ium\Core\Engine\ObelawConfigManager;
+use Obelaw\Ium\Contracts\IumConfigEnum;
+use Obelaw\Ium\Engine\ObelawConfigManager;
 
 final class ObelawiumManager
 {

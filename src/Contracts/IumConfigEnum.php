@@ -1,5 +1,5 @@
 <?php
 
-namespace Obelaw\Ium\Core\Contracts;
+namespace Obelaw\Ium\Contracts;
 
 interface IumConfigEnum {}
