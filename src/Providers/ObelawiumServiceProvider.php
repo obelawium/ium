@@ -7,8 +7,15 @@ use Illuminate\Support\ServiceProvider;
 use Obelaw\Ium\Facades\Ium;
 use Obelaw\Ium\ObelawiumManager;
 
+/**
+ * Registers the Obelawium manager in the container and boots package
+ * resources (migrations, about-command metadata).
+ */
 class ObelawiumServiceProvider extends ServiceProvider
 {
+    /**
+     * Register container bindings.
+     */
     public function register()
     {
         $this->app->singleton(ObelawiumManager::class, function ($app) {
@@ -20,6 +27,9 @@ class ObelawiumServiceProvider extends ServiceProvider
         });
     }
 
+    /**
+     * Bootstrap package resources.
+     */
     public function boot()
     {
         if ($this->app->runningInConsole()) {

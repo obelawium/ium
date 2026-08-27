@@ -1,7 +1,7 @@
 # Obelawium (IUM) — Modular ERP Core Framework
 
 ![PHP](https://img.shields.io/badge/php-%5E8.2-8892BF)
-![Laravel](https://img.shields.io/badge/laravel-%5E11.0%7C%5E12.0%7C%5E13.0-F9322C)
+![Laravel](https://img.shields.io/badge/laravel-%5E12.0%7C%5E13.0-F9322C)
 
 A decoupled, modular ERP framework for Laravel. Business logic is isolated from presentation — domains like EAM, PIM, and WMS are accessed through a single fluent API. No HTTP routes, JSON schemas, or frontend contracts. Pure backend domain orchestration.
 
@@ -14,7 +14,7 @@ ium() → domain() → service() → method()
 | Segment | Role |
 |---------|------|
 | `ium()` | Global helper → `ObelawiumManager` singleton. Single entry point into the ERP domain mesh. |
-| `domain()` | Macro-registered domain (`eam`, `pim`, `url`, `wms`). Resolves to its own manager, keeping domains isolated. |
+| `domain()` | Registered domain (`eam`, `pim`, `url`, `wms`). Resolves to its own manager, keeping domains isolated. |
 | `service()` | Capability within the domain (`assets`, `categories`, `reports`, `products`). Returns a scoped service or sub-manager. |
 | `method()` | Operation — terminal (`create`, `find`, `get`) materializes results; intermediate (`query`, `whereType`) returns `$this` for chaining. |
 
@@ -26,19 +26,76 @@ $url = ium()->url()->shorten(ShortenUrlData::from([...]));
 
 ## Domain Registration
 
-Domains register at boot via a macro on `ObelawiumManager`. Two patterns are supported:
+Domains register at boot through `registerDomain()` on the manager. The domain class must extend `Obelaw\Ium\Abstracts\Domain` and receives the shared config manager at instantiation:
 
 ```php
-// Pattern A: Singleton (EAM-style) — resolve once, reuse across request lifecycle
-$this->app->singleton('ium.eam', EamManager::class);
-ObelawiumManager::macro('eam', fn () => app('ium.eam'));
+use Obelaw\Ium\Facades\Ium;
 
-// Pattern B: Fresh instance with config (PIM/URL-style) — new instance per call
-ObelawiumManager::macro('pim', fn () => new PIMService($this->config()));
-ObelawiumManager::macro('url', fn () => new UrlService($this->config()));
+// In your domain's service provider boot/register:
+Ium::registerDomain('url', UrlService::class);
+Ium::registerDomain('pim', PIMService::class);
+```
+
+Once registered, the domain resolves through the manager — either fluently via magic accessors or through the unified gateway:
+
+```php
+// Fluent access — instantiates the domain with the shared config
+ium()->url()->shorten(ShortenUrlData::from([...]));
+
+// Unified gateway — same call, dispatchable from PHP or an API payload
+Ium::call(domain: 'url', service: 'shorten', data: ShortenUrlData::from([...]));
 ```
 
 Laravel auto-discovers providers via `extra.laravel.providers` in `composer.json`.
+
+## Unified Gateway & Smart Hydration
+
+`Ium::call()` is the single dispatch point for both internal PHP calls and external API requests. It resolves `domain → service → method`, inspects the terminal method's signature via reflection, and hydrates the payload into the expected types.
+
+An API payload maps one-to-one onto the gateway arguments:
+
+```json
+{
+    "domain": "url",
+    "service": "records",
+    "method": "store",
+    "data": {
+        "key": "setting_name",
+        "value": "some_value"
+    }
+}
+```
+
+```php
+Ium::call('url', 'records', 'store', [
+    'key' => 'setting_name',
+    'value' => 'some_value',
+]);
+```
+
+The dispatcher supports four payload shapes:
+
+| Payload shape | Behavior |
+|---------------|----------|
+| DTO instance | Passed through as-is (internal PHP calls). |
+| Associative array + single DTO parameter | The whole array is hydrated into the DTO (`fromArray()` when defined, otherwise `new DTO($data)`). |
+| Associative array + multiple parameters | Treated as named arguments; each value is hydrated against its parameter type. Unknown keys throw a `TypeError`. |
+| List array | Values are matched to parameters by type compatibility, so order-independent mixes of scalars and DTOs just work. |
+
+Backed enums are resolved automatically via `Enum::from()`. Union/nullable types (`?RecordData`) resolve to their first class member. Reflection signatures are cached in memory for the lifetime of the process — flush with `Ium::flushSignatureCache()` or `Ium::reset()`.
+
+## Helpers & Configuration
+
+```php
+ium();                                  // ObelawiumManager singleton
+ium(['key' => 'value']);                // merge config, then return the manager
+ium_config('key', $default);            // read a config value
+ium_config(IumConfigEnumCase::KEY);     // enum-backed keys are supported
+ium_set_config('key', 'value');         // set a config value
+ium_set_config('key', 'value', global: true); // also mirror to the global store
+```
+
+Values set with `global: true` are readable from static contexts (e.g. `ModelBase` resolving its database connection) through `GlobalConfigManager`.
 
 ## Domain Layout
 
@@ -71,7 +128,7 @@ src/
 ```php
 class Asset extends ModelBase
 {
-    protected ?string $domain = 'eam';
+    protected ?string $module = 'eam';
     protected $fillable = ['code', 'name', 'status'];
 }
 ```
@@ -194,4 +251,4 @@ it('creates and queries through the fluent pipeline', function () {
 ## Requirements
 
 - PHP ^8.2
-- Laravel ^11.0 | ^12.0 | ^13.0
+- Laravel ^12.0 | ^13.0
