@@ -2,4 +2,4 @@
 
 namespace Obelaw\Ium\Contracts;
 
-interface IumConfigEnum {}
+interface IumConfigEnum extends \BackedEnum {}

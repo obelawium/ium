@@ -53,6 +53,19 @@ final class ObelawConfigManager
         return $this;
     }
 
+    public function merge(array $configs): self
+    {
+        foreach ($configs as $key => $value) {
+            if ($key instanceof IumConfigEnum || is_string($key)) {
+                $this->set($key, $value);
+            } elseif (is_array($value)) {
+                $this->merge($value);
+            }
+        }
+
+        return $this;
+    }
+
     public function all(): array
     {
         return $this->configs;

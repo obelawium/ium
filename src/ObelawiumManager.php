@@ -2,32 +2,26 @@
 
 namespace Obelaw\Ium;
 
-use Illuminate\Support\Traits\Macroable;
-use Obelaw\Ium\Contracts\IumConfigEnum;
+use Obelaw\Ium\Abstracts\Domain;
+use Obelaw\Ium\Engine\IumDispatcher;
 use Obelaw\Ium\Engine\ObelawConfigManager;
 
 final class ObelawiumManager
 {
-    use Macroable;
-
     private static ?self $instance = null;
 
     public readonly ObelawConfigManager $config;
 
-    private array $modules = [];
+    private array $domains = [];
 
-    public function __construct()
+    private function __construct()
     {
         $this->config = ObelawConfigManager::getInstance();
     }
 
     public static function getInstance(): self
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-
-        return self::$instance;
+        return self::$instance ??= new self();
     }
 
     public function config(): ObelawConfigManager
@@ -37,61 +31,75 @@ final class ObelawiumManager
 
     public function __invoke(array $configs = []): self
     {
-        if (!empty($configs)) {
-            foreach ($configs as $module => $moduleConfig) {
-                if ($module instanceof IumConfigEnum) {
-                    $moduleName = $module->module();
-                    $this->config->merge($moduleName, $moduleConfig);
-                } elseif (is_array($moduleConfig)) {
-                    if (is_string($module)) {
-                        $this->config->merge($module, $moduleConfig);
-                    } elseif (is_int($module)) {
-                        foreach ($moduleConfig as $key => $value) {
-                            if ($key instanceof IumConfigEnum) {
-                                $this->config->set($key, $value);
-                            } elseif (is_string($key)) {
-                                $parts = explode('.', $key, 2);
-                                $moduleName = $parts[0];
-                                $configKey = $parts[1] ?? $key;
-                                $this->config->set($key, $value);
-                            }
-                        }
-                    }
-                } elseif ($module instanceof IumConfigEnum) {
-                    $this->config->set($module, $moduleConfig);
-                }
-            }
+        $this->config->merge($configs);
+
+        return $this;
+    }
+
+    public function registerDomain(string $name, string $domain): self
+    {
+        if (!is_subclass_of($domain, Domain::class)) {
+            throw new \InvalidArgumentException("Domain [{$name}] must be a subclass of " . Domain::class);
         }
 
-        return $this;
+        $instance = self::getInstance();
+        $instance->domains[$name] = $domain;
+
+        return $instance;
     }
 
-    public function registerModule(string $name, object $module): self
+    public function getDomain(string $name): ?string
     {
-        $this->modules[$name] = $module;
-
-        return $this;
+        return $this->domains[$name] ?? null;
     }
 
-    public function getModule(string $name): ?object
+    public function hasDomain(string $name): bool
     {
-        return $this->modules[$name] ?? null;
+        return isset($this->domains[$name]);
     }
 
-    public function hasModule(string $name): bool
+    public function getDomains(): array
     {
-        return isset($this->modules[$name]);
+        return $this->domains;
     }
 
-    public function getModules(): array
+    private function getDomainInstance(string $name): mixed
     {
-        return $this->modules;
+        $domain = $this->getDomain($name);
+
+        if ($domain === null) {
+            throw new \InvalidArgumentException("Domain [{$name}] is not registered.");
+        }
+
+        return new $domain($this->config());
+    }
+
+    public function __call(string $name, array $arguments): mixed
+    {
+        $domain = $this->getDomain($name);
+
+        if ($domain === null) {
+            throw new \BadMethodCallException("Domain [{$name}] is not registered.");
+        }
+
+        return $this->getDomainInstance($name);
+    }
+
+    public function call($domain, $service, $method = null, $data = null): mixed
+    {
+        return $this->dispatcher->dispatch(
+            $this->getDomainInstance($domain),
+            $domain,
+            $service,
+            $method,
+            $data,
+        );
     }
 
     public function reset(): self
     {
         $this->config->reset();
-        $this->modules = [];
+        $this->domains = [];
 
         return $this;
     }

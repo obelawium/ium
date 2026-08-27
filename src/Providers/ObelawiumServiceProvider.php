@@ -4,6 +4,7 @@ namespace Obelaw\Ium\Providers;
 
 use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\ServiceProvider;
+use Obelaw\Ium\Facades\Ium;
 use Obelaw\Ium\ObelawiumManager;
 
 class ObelawiumServiceProvider extends ServiceProvider
@@ -12,6 +13,10 @@ class ObelawiumServiceProvider extends ServiceProvider
     {
         $this->app->singleton(ObelawiumManager::class, function ($app) {
             return ObelawiumManager::getInstance();
+        });
+
+        $this->app->singleton(Ium::class, function ($app) {
+            return new ObelawiumManager();
         });
     }
 
