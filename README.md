@@ -1,254 +1,197 @@
-# Obelawium (IUM) — Modular ERP Core Framework
+# Obelawium (`obelaw/ium`) — Modular ERP Core Standard
 
 ![PHP](https://img.shields.io/badge/php-%5E8.2-8892BF)
-![Laravel](https://img.shields.io/badge/laravel-%5E12.0%7C%5E13.0-F9322C)
+![Laravel](https://img.shields.io/badge/laravel-%5E11.0%20%7C%20%5E12.0%20%7C%20%5E13.0-F9322C)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-A decoupled, modular ERP framework for Laravel. Business logic is isolated from presentation — domains like EAM, PIM, and WMS are accessed through a single fluent API. No HTTP routes, JSON schemas, or frontend contracts. Pure backend domain orchestration.
+**Obelawium (`obelaw/ium`)** is the decoupled ERP core standard for Laravel. It defines the module registry, environment contracts, enterprise building blocks, and conformance test suite that power all `obelaw/ium-*` domain modules.
 
-## Core Philosophy: Fluent API DSL
-
-```
-ium() → domain() → service() → method()
-```
-
-| Segment | Role |
-|---------|------|
-| `ium()` | Global helper → `ObelawiumManager` singleton. Single entry point into the ERP domain mesh. |
-| `domain()` | Registered domain (`eam`, `pim`, `url`, `wms`). Resolves to its own manager, keeping domains isolated. |
-| `service()` | Capability within the domain (`assets`, `categories`, `reports`, `products`). Returns a scoped service or sub-manager. |
-| `method()` | Operation — terminal (`create`, `find`, `get`) materializes results; intermediate (`query`, `whereType`) returns `$this` for chaining. |
-
-```php
-$assets = ium()->eam()->assets()->available();
-$products = ium()->pim()->products()->list();
-$url = ium()->url()->shorten(ShortenUrlData::from([...]));
+```text
+obelaw/ium           ← The Standard: Contracts + ModuleRegistry + Building Blocks + Conformance Suite
+   ▲          ▲
+ium-* modules   obelaw/ium-tenancy  ← Multi-Tenancy Engine (Database-per-Tenant)
+                       ▲
+                  obelaw/twist       ← Filament v5 Presentation Binding Only
 ```
 
-## Domain Registration
+**The Golden Rule:** Domain modules depend **only** on `obelaw/ium`. They have zero knowledge of multi-tenancy drivers or presentation frameworks (Filament / Livewire / HTTP).
 
-Domains register at boot through `registerDomain()` on the manager. The domain class must extend `Obelaw\Ium\Abstracts\Domain` and receives the shared config manager at instantiation:
+See the full normative specification in [docs/IUM-STANDARD.md](docs/IUM-STANDARD.md).
+
+---
+
+## Requirements
+
+- **PHP** `^8.2`
+- **Laravel** `^11.0 | ^12.0 | ^13.0`
+
+## Installation
+
+```bash
+composer require obelaw/ium:^1.0
+```
+
+Laravel auto-discovers `Obelaw\Ium\Providers\ObelawiumServiceProvider`.
+
+---
+
+## 1. Module Registration & Migrations
+
+Register each domain module with `Ium::registerModule()` using a `Module` descriptor:
 
 ```php
 use Obelaw\Ium\Facades\Ium;
+use Obelaw\Ium\Modules\Module;
+use Obelaw\Ium\Modules\ModuleScope;
 
-// In your domain's service provider boot/register:
-Ium::registerDomain('url', UrlService::class);
-Ium::registerDomain('pim', PIMService::class);
+Ium::registerModule(Module::make(
+    name: 'accounting',
+    domain: AccountingDomain::class,
+    scope: ModuleScope::Tenant,
+    dependencies: [],
+    migrationPaths: __DIR__ . '/../../database/migrations',
+    version: '1.0.0',
+));
 ```
 
-Once registered, the domain resolves through the manager — either fluently via magic accessors or through the unified gateway:
+`ModuleRegistry` enforces uniqueness (`DuplicateModuleException`), validates missing dependencies (`MissingModuleDependencyException`), detects cycles (`CircularModuleDependencyException`), and resolves deterministic topological order.
+
+### Migration Overrides & Commands
 
 ```php
-// Fluent access — instantiates the domain with the shared config
-ium()->url()->shorten(ShortenUrlData::from([...]));
+// Option B: host application owns this module's migrations; all migration commands skip it
+Ium::ignoreMigrations('accounting');
 
-// Unified gateway — same call, dispatchable from PHP or an API payload
-Ium::call(domain: 'url', service: 'shorten', data: ShortenUrlData::from([...]));
+// Override a module's migration directory
+Ium::useMigrationPath('accounting', database_path('migrations/accounting'));
 ```
 
-Laravel auto-discovers providers via `extra.laravel.providers` in `composer.json`.
+| Command | Behavior |
+|---|---|
+| `php artisan ium:modules` | Lists all registered modules in topological dependency order with scopes and migration status. |
+| `php artisan ium:migrate` | Runs module migrations in topological order (all modules in single-tenant mode; central modules only in multi-tenant mode). |
+| `php artisan ium:tenants:migrate` | Runs tenant-scoped migrations across tenants via `TenantContext` (supports `--tenant=` and `--module=`). |
+| `php artisan migrate` | Automatically includes all non-ignored modules in single-tenant mode, or central modules only in multi-tenant mode. |
+| `php artisan ium:outbox:process` | Dispatches pending transactional outbox messages (supports `--limit=` and `--retry-failed`). |
 
-## Unified Gateway & Smart Hydration
+---
 
-`Ium::call()` is the single dispatch point for both internal PHP calls and external API requests. It resolves `domain → service → method`, inspects the terminal method's signature via reflection, and hydrates the payload into the expected types.
+## 2. Persistence Base Classes
 
-An API payload maps one-to-one onto the gateway arguments:
+Extend `ModelBase` and `MigrationBase` to receive automatic normalized `ium_<module>_` table prefixing (whether `$module` is `'accounting'` or `'accounting_'`) and dynamic `TenantContext` connection resolution:
 
-```json
+```php
+use Obelaw\Ium\Bases\ModelBase;
+
+class Account extends ModelBase
 {
-    "domain": "url",
-    "service": "records",
-    "method": "store",
-    "data": {
-        "key": "setting_name",
-        "value": "some_value"
+    protected ?string $module = 'accounting';
+    protected $table = 'accounts'; // resolves to `ium_accounting_accounts`
+}
+```
+
+Use `Ium::transaction(fn () => ...)` so transactions always execute on the exact same database connection resolved by `ModelBase`.
+
+---
+
+## 3. Environment Contracts
+
+All runtime integrations are injected through container contracts with zero-configuration `Null` defaults:
+
+- **`Obelaw\Ium\Contracts\TenantContext` & `TenantIdentity`**: Active tenant identity, database connection name, and `runForTenant()`.
+- **`Obelaw\Ium\Contracts\ActorResolver` & `Actor`**: Current domain actor (`system` by default).
+- **`Obelaw\Ium\Contracts\Authorizer`**: Domain-level permission checks throwing `AuthorizationException`.
+- **`Obelaw\Ium\Contracts\SettingsRepository`**: Tenant-isolated settings with Laravel `config()` fallback.
+
+---
+
+## 4. Enterprise Building Blocks
+
+### `Money` (Minor Units + Zero-Drift Allocation)
+```php
+use Obelaw\Ium\Support\Money;
+
+$total = Money::fromMajor('100.50', 'USD'); // 10050 minor units
+$kwd = Money::fromMajor('10.125', 'KWD');   // 10125 minor units (3 ISO decimals)
+$parts = Money::minor(100, 'USD')->split(3); // [34, 33, 33] — exact sum = 100
+```
+
+### `Sequence` (Atomic & Tenant-Isolated)
+```php
+use Obelaw\Ium\Facades\Ium;
+
+$voucherNo = Ium::sequence()->next('journal:2026', prefix: 'JE-2026', padding: 6);
+// => 'JE-2026-000001'
+```
+
+### `Action` (Authorized, Transactional, After-Commit Events)
+```php
+use Obelaw\Ium\Actions\Action;
+use Obelaw\Ium\Contracts\Actor;
+
+final class PostJournalEntryAction extends Action
+{
+    protected ?string $ability = 'accounting.journal.post';
+
+    protected function handle(mixed $input, Actor $actor): mixed
+    {
+        // Runs inside Ium::transaction() on the active tenant connection
+        $this->recordEvent(new JournalEntryPosted($entry));
+        return $entry;
     }
 }
 ```
 
+### `BaseDto` / `Dto` (Validated Readonly DTOs)
+Supports both array-hydrated and promoted-constructor `readonly` subclasses, throwing `Illuminate\Validation\ValidationException` on invalid input, with `from()`, `toArray()`, `with()`, `only()`, and `except()`.
+
+### `Outbox` (Transactional Cross-Domain Events)
 ```php
-Ium::call('url', 'records', 'store', [
-    'key' => 'setting_name',
-    'value' => 'some_value',
-]);
+use Obelaw\Ium\Facades\Ium;
+
+Ium::outbox()->publish(
+    topic: 'sales.order.confirmed',
+    payload: ['order_id' => 101],
+    idempotencyKey: 'sales-order-confirmed-101',
+);
 ```
 
-The dispatcher supports four payload shapes:
+---
 
-| Payload shape | Behavior |
-|---------------|----------|
-| DTO instance | Passed through as-is (internal PHP calls). |
-| Associative array + single DTO parameter | The whole array is hydrated into the DTO (`fromArray()` when defined, otherwise `new DTO($data)`). |
-| Associative array + multiple parameters | Treated as named arguments; each value is hydrated against its parameter type. Unknown keys throw a `TypeError`. |
-| List array | Values are matched to parameters by type compatibility, so order-independent mixes of scalars and DTOs just work. |
+## 5. Module Conformance Suite (`ModuleTestCase`)
 
-Backed enums are resolved automatically via `Enum::from()`. Union/nullable types (`?RecordData`) resolve to their first class member. Reflection signatures are cached in memory for the lifetime of the process — flush with `Ium::flushSignatureCache()` or `Ium::reset()`.
-
-## Helpers & Configuration
-
-```php
-ium();                                  // ObelawiumManager singleton
-ium(['key' => 'value']);                // merge config, then return the manager
-ium_config('key', $default);            // read a config value
-ium_config(IumConfigEnumCase::KEY);     // enum-backed keys are supported
-ium_set_config('key', 'value');         // set a config value
-ium_set_config('key', 'value', global: true); // also mirror to the global store
-```
-
-Values set with `global: true` are readable from static contexts (e.g. `ModelBase` resolving its database connection) through `GlobalConfigManager`.
-
-## Domain Layout
-
-Each domain follows a DDD-aligned structure with strict segregation between write mutations and read pipelines:
-
-| Directory | Concern |
-|-----------|---------|
-| `Actions/` | Write mutations. Receives a validated DTO, performs one unit of work. |
-| `Queries/` | Read pipelines. Intermediate methods return `$this`; terminal methods materialise results. |
-| `Data/` | Immutable DTOs. Type-safe, structured input at every domain boundary. |
-| `Models/` | Eloquent definitions. Persistence only — no business logic. Extends `ModelBase` (auto-prefixes `ium_` tables, binds configured connection). |
-| `Managers/` | Domain entry points. Orchestrates sub-services (`AssetManager`, `CategoryManager`, `ReportsManager`). |
-| `Events/` | Domain events fired during lifecycle transitions. |
-| `Exceptions/` | Domain-specific exceptions for invalid states. |
-| `Traits/` | Cross-cutting model behaviors (`HasAssets`, `HasMedia`, `HasStock`). |
-
-```
-src/
-├── Actions/
-├── Data/
-├── Events/
-├── Exceptions/
-├── Managers/
-├── Models/
-├── Providers/
-├── Queries/
-└── Traits/
-```
+Extend `Obelaw\Ium\Testing\ModuleTestCase` in any `obelaw/ium-*` test suite to automatically verify your module in **both single-tenant and dual-tenant modes**:
 
 ```php
-class Asset extends ModelBase
+use Obelaw\Ium\Testing\ModuleTestCase;
+
+final class AccountingConformanceTest extends ModuleTestCase
 {
-    protected ?string $module = 'eam';
-    protected $fillable = ['code', 'name', 'status'];
+    protected function moduleServiceProviders(): array
+    {
+        return [ObelawAccountingServiceProvider::class];
+    }
+
+    public function test_conformance(): void
+    {
+        $this->assertModuleRegistered('accounting');
+        $this->runConformance(function (string $mode, ?TenantIdentity $tenant): void {
+            // Executed automatically in single-tenant AND isolated tenant A & tenant B
+        });
+        $this->assertSequenceIsolated('journal:2026', 'JE');
+        $this->assertCacheAndSettingsIsolated();
+    }
 }
 ```
 
-## Available Domains
-
-| Package | Domain | Description |
-|---------|--------|-------------|
-| `obelaw/ium-eam` | `eam` | Employee Asset Management — polymorphic asset lifecycle, transfers, categories, reports |
-| `obelaw/ium-pim` | `pim` | Product Information Management — products, variants, pricing, categories, stock strategy |
-| `obelaw/ium-url` | `url` | URL Shortening & Analytics — shortening, click tracking, aggregated stats |
-| `obelaw/ium-wms` | `wms` | Warehouse Management — inventory, locations, movements |
-
-## Usage
-
-### Mutation
-
-```php
-use Obelaw\Ium\Eam\Data\AssetDTO;
-
-$asset = ium()->eam()->assets()->create(AssetDTO::from([
-    'code' => 'LPT-001',
-    'name' => 'Dell Laptop',
-    'category_id' => 1,
-    'serial_number' => 'SN123456',
-    'purchase_date' => '2024-01-15',
-    'purchase_value' => 1200.00,
-]));
-```
-
-`assets()->create()` builds an `AssetDTO` from the array, validates it, and dispatches `CreateAssetAction`. Persists through Eloquent, returns the `Asset` instance.
-
-### Query Pipeline
-
-```php
-$assets = ium()->eam()
-    ->assets()
-    ->list();
-
-$available = ium()->eam()
-    ->assets()
-    ->available();
-```
-
-### Output Control
-
-Once `->query()` opens a pipeline, three patterns control what the terminal method returns:
-
-#### Fluent Chain Pipeline
-
-Intermediate methods return `$this`, deferring execution until a terminal method (`get`, `first`, `paginate`, `count`) is called:
-
-```php
-$results = ium()->xyz()
-    ->records()
-    ->query()
-    ->whereType('premium')
-    ->activeOnly()
-    ->sortBy('created_at', 'desc')
-    ->get();
-```
-
-#### Property / Field Selection
-
-Constrain returned columns with `select()`, reducing memory at enterprise scale:
-
-```php
-$summaries = ium()->xyz()
-    ->records()
-    ->query()
-    ->whereType('standard')
-    ->select(['id', 'name', 'type'])
-    ->paginate(25);
-```
-
-#### Output Formatter / Transformer
-
-Reshape domain objects through a transformer before the terminal method returns:
-
-```php
-$results = ium()->xyz()
-    ->records()
-    ->query()
-    ->whereType('premium')
-    ->select(['id', 'name', 'metadata'])
-    ->transform(XyzSummary::class)
-    ->get();
-```
-
-### Cross-Domain Integration
-
-Domains can delegate to each other through the shared `ium()` gateway:
-
-```php
-// PIM delegates stock queries to WMS when configured
-$stock = ium()->pim()->stockManager()->getAvailable($productId);
-```
+---
 
 ## Testing
 
 ```bash
-php artisan migrate --path=vendor/obelaw/ium-xyz/database/migrations
 composer test
 ```
 
-```php
-it('creates and queries through the fluent pipeline', function () {
-    $asset = ium()->eam()->assets()->create(AssetDTO::from([
-        'code' => 'LPT-001',
-        'name' => 'Test',
-        'category_id' => 1,
-    ]));
+## License
 
-    $assets = ium()->eam()->assets()->available();
-
-    expect($assets)->toHaveCount(1);
-});
-```
-
-## Requirements
-
-- PHP ^8.2
-- Laravel ^12.0 | ^13.0
+The MIT License (MIT). Please see [LICENSE](LICENSE) for more information.

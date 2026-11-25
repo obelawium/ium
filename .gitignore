@@ -1,2 +1,8 @@
 /vendor
 /composer.lock
+/.phpunit.cache
+/.phpunit.result.cache
+/.agents
+/.claude
+.DS_Store
+Thumbs.db

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.2', '8.3', '8.4' ]
+        laravel: [ '11.*', '12.*', '13.*' ]
+        exclude:
+          - php: '8.2'
+            laravel: '13.*'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, bcmath, mbstring
+          coverage: none
+
+      - name: Determine Testbench constraint
+        id: testbench
+        run: |
+          if [ "${{ matrix.laravel }}" = "11.*" ]; then
+            echo "constraint=^9.0" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.laravel }}" = "12.*" ]; then
+            echo "constraint=^10.0" >> $GITHUB_OUTPUT
+          else
+            echo "constraint=^11.0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies
+        run: |
+          composer require "illuminate/support:${{ matrix.laravel }}" "illuminate/database:${{ matrix.laravel }}" "illuminate/console:${{ matrix.laravel }}" "illuminate/container:${{ matrix.laravel }}" "illuminate/contracts:${{ matrix.laravel }}" "illuminate/events:${{ matrix.laravel }}" "illuminate/validation:${{ matrix.laravel }}" --no-interaction --no-update
+          composer require --dev "orchestra/testbench:${{ steps.testbench.outputs.constraint }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Lint PHP syntax
+        run: find src tests -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      - name: Run Pest test suite
+        run: vendor/bin/pest --ci
