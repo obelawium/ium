@@ -1,24 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Obelaw\Ium\Engine;
 
+use Illuminate\Container\Container;
 use Obelaw\Ium\Contracts\IumConfigEnum;
-use Obelaw\Ium\Engine\GlobalConfigManager;
 
 /**
- * Process-local configuration store for the Ium engine.
+ * Container-managed configuration store for the Obelawium engine.
  *
  * Keys may be plain strings or any backed enum implementing IumConfigEnum.
- * Values flagged as global are mirrored into the GlobalConfigManager so
- * they can be read from static contexts (e.g. model booting).
+ * Values flagged as global are mirrored into GlobalConfigManager so they can
+ * be read from static contexts without leaking across Octane requests or tests.
  */
 final class ObelawConfigManager
 {
-    /**
-     * Singleton instance.
-     */
-    private static ?self $instance = null;
-
     /**
      * Stored configuration values.
      *
@@ -26,18 +23,23 @@ final class ObelawConfigManager
      */
     private array $configs = [];
 
-    private function __construct() {}
+    public function __construct() {}
 
     /**
-     * Get the singleton instance.
+     * Resolve the active container-bound configuration manager.
+     *
+     * Retained for backwards compatibility; delegates to the Laravel Container
+     * rather than holding a process-global static singleton.
      */
     public static function getInstance(): self
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
+        $container = Container::getInstance();
+
+        if (! $container->bound(self::class)) {
+            $container->singleton(self::class, static fn (): self => new self());
         }
 
-        return self::$instance;
+        return $container->make(self::class);
     }
 
     /**
@@ -58,7 +60,7 @@ final class ObelawConfigManager
      *
      * @param IumConfigEnum|string $config Config key or backed enum.
      * @param mixed $value Value to store.
-     * @param bool|null $global When true, also store in the global manager.
+     * @param bool|null $global When true, also store in GlobalConfigManager.
      */
     public function set(IumConfigEnum|string $config, mixed $value, ?bool $global = null): self
     {
@@ -83,7 +85,7 @@ final class ObelawConfigManager
     {
         $key = $config instanceof IumConfigEnum ? $config->value : $config;
 
-        if (!isset($this->configs[$key])) {
+        if (! array_key_exists($key, $this->configs)) {
             $this->configs[$key] = $value;
         }
 
@@ -93,8 +95,7 @@ final class ObelawConfigManager
     /**
      * Merge a set of configuration values into the store.
      *
-     * @param array<mixed> $configs Keyed configuration values; nested arrays
-     *                              are merged recursively.
+     * @param array<mixed> $configs Keyed configuration values; nested arrays are merged recursively.
      */
     public function merge(array $configs): self
     {
@@ -120,11 +121,12 @@ final class ObelawConfigManager
     }
 
     /**
-     * Clear all stored configuration values.
+     * Clear all stored configuration values and reset mirrored global values.
      */
     public function reset(): self
     {
         $this->configs = [];
+        GlobalConfigManager::reset();
 
         return $this;
     }

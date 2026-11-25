@@ -1,10 +1,12 @@
 <?php
 
-use Obelaw\Ium\ObelawiumManager;
-use Obelaw\Ium\Contracts\IumConfigEnum;
-use Illuminate\Container\Container;
+declare(strict_types=1);
 
-if (!function_exists('ium')) {
+use Illuminate\Container\Container;
+use Obelaw\Ium\Contracts\IumConfigEnum;
+use Obelaw\Ium\ObelawiumManager;
+
+if (! function_exists('ium')) {
     /**
      * Resolve the Obelawium manager from the container, optionally merging config.
      *
@@ -14,7 +16,7 @@ if (!function_exists('ium')) {
     {
         $manager = Container::getInstance()->make(ObelawiumManager::class);
 
-        if (!empty($configs)) {
+        if ($configs !== []) {
             $manager($configs);
         }
 
@@ -22,7 +24,7 @@ if (!function_exists('ium')) {
     }
 }
 
-if (!function_exists('ium_config')) {
+if (! function_exists('ium_config')) {
     /**
      * Get an Ium configuration value.
      *
@@ -35,7 +37,7 @@ if (!function_exists('ium_config')) {
     }
 }
 
-if (!function_exists('ium_set_config')) {
+if (! function_exists('ium_set_config')) {
     /**
      * Set an Ium configuration value.
      *

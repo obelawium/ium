@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Obelaw\Ium\Abstracts;
 
 use Obelaw\Ium\Engine\ObelawConfigManager;
@@ -10,7 +12,17 @@ use Obelaw\Ium\Engine\ObelawConfigManager;
  * A domain groups related services and receives the shared configuration
  * manager at instantiation.
  */
-class Domain
+abstract class Domain
 {
-    public function __construct(private ObelawConfigManager $config) {}
+    public function __construct(
+        protected readonly ObelawConfigManager $config
+    ) {}
+
+    /**
+     * Access the shared Obelawium configuration manager.
+     */
+    public function config(): ObelawConfigManager
+    {
+        return $this->config;
+    }
 }
